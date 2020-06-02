@@ -1,2 +1,3 @@
-client_id='12ba3ad6830d47f182168b1bf67d537d'
-client_secret='0456faabd50944409d53e7922f58baec'
+import os
+client_id = os.getenv("SPOTIFY_CLIENT") or 'paste client id here' 
+client_secret = os.getenv("SPOTIFY_SECRET") or 'paste secret here'

@@ -9,11 +9,13 @@ import datetime
 import os
 import pandas as pd
 import argparse
+from user_details import client_id, client_secret
+import user_details
  #making some change
 class SpotifyPlayListData():
     def __init__(self):
-        self.client_credentials_manager = SpotifyClientCredentials(client_id='12ba3ad6830d47f182168b1bf67d537d',
-                                                            client_secret='0456faabd50944409d53e7922f58baec')
+        self.client_credentials_manager = SpotifyClientCredentials(client_id=user_details.client_id,
+                                                            client_secret=user_details.client_secret)
         self.username='akipper96'
         self.sp = spotipy.Spotify(client_credentials_manager=self.client_credentials_manager)
 
