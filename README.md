@@ -1,7 +1,7 @@
 # get-discover-weekly
 This is a command line tool that grabs the discover weekly and/or release radar playlist from your Spotify account and reports the most 'danceable' and most popular song. It also saves a .csv file with all the song data from those playlists. 
 
-This program requires the [spotipy](https://spotipy.readthedocs.io/) Python library, which can be installed using pip. 
+This program requires the [spotipy](https://spotipy.readthedocs.io/) Python library (as well as Numpy and Pandas), which can all be installed using pip. 
 
 This program also requires a Spotify developer / application client id and secret, which can be created by going [here](https://developer.spotify.com/dashboard/applications) and clicking 'create a client id'. Then, copy the client ID and client secret to the declarations in the user_details.py file, or add them as environment variables by writing 
 
