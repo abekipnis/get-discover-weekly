@@ -25,6 +25,53 @@ class SpotifyPlayListData():
         self.playlist_names = [re.compile('[^a-zA-Z0-9]').sub('',p_list['name']) for p_list in self.playlists['items']]
         # print self.playlist_names
 
+
+    def get_PL_songs_and_artists(self,uri):
+        playlist_id = uri.split(':')[2]
+        results = self.sp.user_playlist(self.username,playlist_id,fields='name,tracks,next')
+        tracks = results['tracks']
+        artists = []
+        names = []
+        sslerr = 0
+        for t in tracks['items']:
+            try:
+                names.append(t['track']['name'].encode('ascii','ignore'))
+                #if there are multiple artists on the track, put them together with ' + '
+                artists_on_track = ""
+                for n, artist in enumerate(t['track']['artists']):
+                    if n == len(t['track']['artists'])-1:
+                        artists_on_track += artist['name']
+                    else:
+                        artists_on_track += artist['name']+" + "
+                artists.append(artists_on_track)
+            except:
+                sslerr+=1
+                try:
+                    print(t['track']['name'])
+                except:
+                    pass
+            #get all the batches of song data while there are no more left
+        while tracks['next']:
+            tracks = self.sp.next(tracks)
+            for t in tracks['items']:
+                try:
+                    names.append(t['track']['name'].encode('ascii','ignore'))
+                    artists_on_track = ""
+                    for n, artist in enumerate(t['track']['artists']):
+                        if n == len(t['track']['artists'])-1:
+                            artists_on_track += artist['name']
+                        else:
+                            artists_on_track += artist['name']+" + "
+                    artists.append(artists_on_track)
+                except:
+                    sslerr+=1
+                    print (t)
+                    try:
+                        print (t['track']['name'])
+                    except:
+                        pass
+        return names, artists
+
     def collect_playlist_data(self,uri):
         # username = uri.split(':')[2]
         playlist_id = uri.split(':')[2]
@@ -41,7 +88,7 @@ class SpotifyPlayListData():
         if playlist_name == 'ReleaseRadar':
             playlist_name = 'ReleaseRadar_'+datetime.datetime.now().strftime("%d-%m-%y")
             pname = 'RRadar'
-        print playlist_name
+        print(playlist_name)
         #problem with playlist names when making file... some playlist names have odd characters in them (namely slashes)
 
         # all the data we want to collect from the songs
@@ -115,7 +162,7 @@ class SpotifyPlayListData():
             except:
                 sslerr+=1
                 try:
-                    print t['track']['name']
+                    print(t['track']['name'])
                 except:
                     pass
         #get all the batches of song data while there are no more left
@@ -154,12 +201,14 @@ class SpotifyPlayListData():
                     sslerr+=1
                     print (t)
                     try:
-                        print t['track']['name']
+                        print (t['track']['name'])
                     except:
                         pass
+
+
         print ("Number of tracks that couldn't be processed in %s: %d" %(playlist_name,sslerr))
         for n,name in enumerate(names):
-            names[n]="'"+name+"'"
+            names[n]="'"+str(name)+"'"
 
         most_danceable = np.argmax(danceability)
         most_danceable_string = "Most danceable song: %s by %s, %d%% danceable" %(names[most_danceable],artists[most_danceable],int(danceability[most_danceable]*100))
@@ -173,20 +222,76 @@ class SpotifyPlayListData():
         #     tweet_sys_command = 'twitter -eabekipnis@yahoo.com set %s' %('"'+tweetstring+'"')
         #     os.system(tweet_sys_command)
 
-        list = np.array(zip(names,artists,duration_ms,popularity,tempo,speechiness,acousticness,instrumentalness,danceability,loudness,valence,energy,time_signature,liveness, mode, key,explicit,release_date))
-        cols = "name,artists,duration_ms,popularity,tempo,speechiness,acousticness,instrumentalness,danceability,loudness,valence,energy,time_signature,liveness,mode,key,explicit,release_date".split(',')
-        d = pd.DataFrame(list,columns = cols)
-        d.to_csv('~/Desktop/Data_Science/SPOTIPY/playlists_data/%s_playlist_song_data.csv' %(playlist_name),encoding ='utf-8')
+        l = np.array(list(zip(names,artists,duration_ms,popularity,tempo,speechiness,acousticness,instrumentalness,danceability,loudness,valence,energy,time_signature,liveness, mode, key,explicit,release_date,uris)))
+        cols = "name,artists,duration_ms,popularity,tempo,speechiness,acousticness,instrumentalness,danceability,loudness,valence,energy,time_signature,liveness,mode,key,explicit,release_date,uri".split(',')
+        import pdb
+        pdb.set_trace()
+        d = pd.DataFrame(l, columns = cols)
+
+        def do_audio_analyses():
+            audiofeatures = pd.read_json(json.dumps(self.sp.audio_features([d.loc[i]['uri'] for i in range(len(d))])))
+
+            #drop the audio features we don't want
+            audiofeatures.drop(['analysis_url','duration_ms','id','track_href','type','uri'],axis=1,inplace=True)
+
+            #get the audio analysis for each song
+            audioanalysis = [self.sp.audio_analysis(d.loc[i]['uri']) for i in range(len(d))]
+
+            #we want to get some sample (equal size) of the pitch and timbre vectors for each song
+            #size of how big each of our data 'slices' are
+            slicesize = 15
+            #how many slices are we taking from each song?
+            n_slices = 10
+
+            pitch_dict = {
+                0:'C',
+                1:'C#',
+                2:'D',
+                3:'D#',
+                4:'E',
+                5:'E#',
+                6:'F',
+                7:'F#',
+                8:'G',
+                9:'G#',
+                10:'A',
+                11:'A#',
+                12:'B'}
+
+            p = pd.DataFrame()
+            t = pd.DataFrame()
+            for song in range(len(audioanalysis)):
+                try:
+                    #define the slices (different for each song)
+                    lowerrange = [int(len(audioanalysis[song]['segments']))/n_slices*i for i in range(n_slices)]
+                    upperrange = [int(len(audioanalysis[song]['segments']))/n_slices*i+slicesize for i in range(n_slices)]
+
+                    #define slicing for the array
+                    s = [slice(lowerrange[i],upperrange[i]) for i in range(len(upperrange))]
+
+                    pitches = np.array([[audioanalysis[song]['segments'][s[i]][k]['pitches'] for k in range(slicesize)] for i in range(n_slices)])
+                    pitches = pd.DataFrame(pitches.flatten()).T
+                    pitches.rename(columns=lambda x: 'segment%d unit%d %s' %((x/(slicesize*12)),(x%(slicesize*12)/12),pitch_dict[x%(slicesize*12)%12]),inplace=True)
+                    p = p.append(pitches)
+
+                    timbre = np.array([[audioanalysis[song]['segments'][s[i]][k]['timbre'] for k in range(slicesize)] for i in range(n_slices)])
+                    timbre = pd.DataFrame(timbre.flatten()).T
+                    timbre.rename(columns=lambda x: 'segment%d unit%d %s' %((x/(slicesize*12)),(x%(slicesize*12)/12),'timbre'),inplace=True)
+                    t = t.append(timbre)
+                except:
+                    d.drop([song],inplace=True)
+                    audiofeatures.drop([song],inplace=True)
+            d = pd.concat([d,audiofeatures,t.reset_index(),p.reset_index()],axis=1)
+
+            d.to_csv('~/Desktop/Data_Science/SPOTIPY/playlists_data/%s_playlist_song_data.csv' %(playlist_name),encoding ='utf-8')
 
     def get_discover_weekly(self,dw,rr):
         for n,uri in enumerate(self.playlist_uris):
-            #if self.playlist_names[n]=='DiscoverWeekly' or self.playlist_names[n]=='ReleaseRadar':
             if rr and self.playlist_names[n]=='ReleaseRadar':
-            # if playlist_names[n]=='electronic':
-                #print uri
                 self.collect_playlist_data(uri)
-	    if dw and self.playlist_names[n]=='DiscoverWeekly':
-		self.collect_playlist_data(uri)
+            if dw and self.playlist_names[n]=='DiscoverWeekly':
+                self.collect_playlist_data(uri)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -194,4 +299,4 @@ if __name__ == "__main__":
     parser.add_argument('--rr', help='Release Radar', action='store_true')
     args = parser.parse_args()
     spd = SpotifyPlayListData()
-    spd.get_discover_weekly(args.dw,args.rr)
+    spd.get_discover_weekly(args.dw, args.rr)
